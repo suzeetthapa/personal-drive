@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suzeet Drive</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+ 
+    <div id="authScreen" class="screen">
+        <div class="auth-container">
+            <div class="logo">
+                <i class="fas fa-cloud"></i>
+                <h1>SuJit Drive</h1>
+                <p>Lifetime cloud storage</p>
+            </div>
+            
+            <div class="auth-form">
+                <h2>Setup Your Drive</h2>
+                <div class="step">
+                    <h3>Step 1: Create GitHub Repository</h3>
+                    <p>Create a <strong>private</strong> repository named "my-personal-drive" on GitHub</p>
+                </div>
+                
+                <div class="step">
+                    <h3>Step 2: Generate Access Token</h3>
+                    <p>Go to GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)</p>
+                    <p>Create token with these permissions:</p>
+                    <ul>
+                        <li><code>repo</code> (Full control of private repositories)</li>
+                        <li><code>write:packages</code></li>
+                        <li><code>delete:packages</code></li>
+                    </ul>
+                </div>
+                
+                <div class="step">
+                    <h3>Step 3: Enter Your Token</h3>
+                    <input type="password" id="githubToken" placeholder="Paste your GitHub token here">
+                    <button id="saveTokenBtn" class="btn-primary">
+                        <i class="fas fa-save"></i> Save & Continue
+                    </button>
+                    <p class="note">Token is stored only in your browser, never sent to any server</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+   
+    <div id="appScreen" class="screen" style="display: none;">
+      
+        <header class="header">
+            <div class="header-left">
+                <div class="logo-small">
+                    <i class="fas fa-cloud"></i>
+                    <span>Personal Drive</span>
+                </div>
+                <nav class="breadcrumb" id="breadcrumb">
+                    <span class="breadcrumb-item" data-path="">My Drive</span>
+                </nav>
+            </div>
+            <div class="header-right">
+                <div class="search-box">
+                    <input type="text" id="searchBox" placeholder="Search files...">
+                    <i class="fas fa-search"></i>
+                </div>
+                <button id="newFolderBtn" class="btn-icon" title="New Folder">
+                    <i class="fas fa-folder-plus"></i>
+                </button>
+                <label for="fileUpload" class="btn-primary">
+                    <i class="fas fa-upload"></i> Upload
+                </label>
+                <input type="file" id="fileUpload" multiple style="display: none;">
+                <button id="logoutBtn" class="btn-icon" title="Logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </header>
+
+        
+        <main class="main-content">
+           
+            <aside class="sidebar">
+                <div class="user-info">
+                    <div class="avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <span id="username">User</span>
+                </div>
+                
+                <nav class="nav-menu">
+                    <button class="nav-item active" data-filter="all">
+                        <i class="fas fa-th"></i> All Files
+                    </button>
+                    <button class="nav-item" data-filter="folders">
+                        <i class="fas fa-folder"></i> Folders
+                    </button>
+                    <button class="nav-item" data-filter="images">
+                        <i class="fas fa-image"></i> Images
+                    </button>
+                    <button class="nav-item" data-filter="documents">
+                        <i class="fas fa-file-pdf"></i> Documents
+                    </button>
+                    <button class="nav-item" data-filter="recent">
+                        <i class="fas fa-clock"></i> Recent
+                    </button>
+                </nav>
+
+                <div class="storage-info">
+                    <h4>Storage</h4>
+                    <div class="storage-bar">
+                        <div class="storage-fill" id="storageFill"></div>
+                    </div>
+                    <span id="storageText">0 MB of 1 GB</span>
+                    <small>GitHub Free Tier</small>
+                </div>
+            </aside>
+
+           
+            <section class="file-browser">
+            
+                <div class="toolbar">
+                    <button id="selectAllBtn" class="btn-text">
+                        <i class="fas fa-check-square"></i> Select All
+                    </button>
+                    <button id="deleteSelectedBtn" class="btn-text btn-danger">
+                        <i class="fas fa-trash"></i> Delete Selected
+                    </button>
+                    <button id="downloadSelectedBtn" class="btn-text btn-primary">
+                        <i class="fas fa-download"></i> Download Selected
+                    </button>
+                    <div class="view-toggle">
+                        <button class="view-btn active" data-view="grid">
+                            <i class="fas fa-th"></i>
+                        </button>
+                        <button class="view-btn" data-view="list">
+                            <i class="fas fa-list"></i>
+                        </button>
+                    </div>
+                </div>
+
+             
+                <div class="files-grid" id="filesGrid">
+                  
+                    <div class="empty-state">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <h3>Your drive is empty</h3>
+                        <p>Upload files or create folders to get started</p>
+                    </div>
+                </div>
+
+               
+                <div class="info-panel" id="infoPanel">
+                    <button class="close-panel">&times;</button>
+                    <h3>File Info</h3>
+                    <div class="file-info" id="fileInfo">
+                        <p>Select a file to view details</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="newFolderModal" class="modal">
+            <div class="modal-content">
+                <h2><i class="fas fa-folder-plus"></i> New Folder</h2>
+                <input type="text" id="folderName" placeholder="Enter folder name">
+                <div class="modal-actions">
+                    <button id="createFolderBtn" class="btn-primary">Create</button>
+                    <button class="btn-secondary close-modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="renameModal" class="modal">
+            <div class="modal-content">
+                <h2><i class="fas fa-edit"></i> Rename</h2>
+                <input type="text" id="renameInput" placeholder="Enter new name">
+                <div class="modal-actions">
+                    <button id="confirmRenameBtn" class="btn-primary">Rename</button>
+                    <button class="btn-secondary close-modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+       
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="spinner"></div>
+            <p id="loadingText">Loading...</p>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
