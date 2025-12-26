@@ -1,4 +1,4 @@
-// GitHub Drive Manager - Fixed Auth System for 2024
+// GitHub Drive Manager - Authentication System
 
 class GitHubDriveAuth {
     constructor() {
@@ -7,6 +7,7 @@ class GitHubDriveAuth {
         this.repoName = 'my-personal-drive';
         this.repoOwner = null;
         this.baseURL = 'https://api.github.com';
+        this.cache = new Map();
         
         this.init();
     }
@@ -32,7 +33,6 @@ class GitHubDriveAuth {
         this.showLoading('Validating token...');
         
         try {
-            // First, create or verify repository exists
             const username = await this.validateToken(token);
             
             this.token = token;
@@ -42,90 +42,96 @@ class GitHubDriveAuth {
             localStorage.setItem('github_drive_token', token);
             localStorage.setItem('github_username', username);
             
-            // Ensure repository exists
             await this.ensureRepositoryExists();
             
             this.showApp();
+            this.showToast('Login successful!', 'success');
         } catch (error) {
-            alert('Error: ' + error.message);
             console.error('Token validation failed:', error);
+            this.showToast('Invalid token. Please check and try again.', 'error');
         } finally {
             this.hideLoading();
         }
     }
     
     async validateToken(token) {
+        const cacheKey = 'validate_token';
+        if (this.cache.has(cacheKey)) {
+            return this.cache.get(cacheKey);
+        }
+        
         const response = await fetch(`${this.baseURL}/user`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'Personal-Drive-App'
-            }
+            headers: this.getHeaders(token)
         });
         
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`GitHub API error (${response.status}): ${errorText}`);
+            throw new Error(`Invalid token (${response.status})`);
         }
         
         const userData = await response.json();
+        this.cache.set(cacheKey, userData.login);
         return userData.login;
     }
     
     async ensureRepositoryExists() {
         try {
-            // Try to get repository info
             await this.apiRequest(`/repos/${this.repoOwner}/${this.repoName}`);
         } catch (error) {
-            // Repository doesn't exist, create it
-            console.log('Repository not found, creating...');
-            await this.createRepository();
+            if (error.message.includes('404')) {
+                console.log('Creating repository...');
+                await this.createRepository();
+            } else {
+                throw error;
+            }
         }
     }
     
     async createRepository() {
         const response = await fetch(`${this.baseURL}/user/repos`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${this.token}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'Personal-Drive-App'
-            },
+            headers: this.getHeaders(),
             body: JSON.stringify({
                 name: this.repoName,
                 description: 'Personal Drive Storage',
                 private: true,
-                auto_init: true, // Initialize with README
-                is_template: false
+                auto_init: true
             })
         });
         
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create repository: ${errorText}`);
+            const error = await response.json();
+            throw new Error(`Failed to create repository: ${error.message}`);
         }
         
         return await response.json();
     }
     
     logout() {
-        localStorage.removeItem('github_drive_token');
-        localStorage.removeItem('github_username');
-        this.token = null;
-        this.username = null;
-        this.showAuth();
+        if (confirm('Are you sure you want to logout?')) {
+            localStorage.removeItem('github_drive_token');
+            localStorage.removeItem('github_username');
+            this.token = null;
+            this.username = null;
+            this.cache.clear();
+            this.showAuth();
+            this.showToast('Logged out successfully', 'info');
+        }
     }
     
     showAuth() {
         document.getElementById('authScreen').style.display = 'block';
         document.getElementById('appScreen').style.display = 'none';
+        document.getElementById('loadingScreen').style.display = 'none';
     }
     
     showApp() {
         document.getElementById('authScreen').style.display = 'none';
         document.getElementById('appScreen').style.display = 'block';
-        document.getElementById('username').textContent = this.username;
+        document.getElementById('loadingScreen').style.display = 'none';
+        
+        if (this.username) {
+            document.getElementById('username').textContent = this.username;
+        }
         
         if (window.driveManager) {
             window.driveManager.init();
@@ -133,30 +139,44 @@ class GitHubDriveAuth {
     }
     
     setupEventListeners() {
-        document.getElementById('saveTokenBtn').addEventListener('click', () => {
+        document.getElementById('saveTokenBtn')?.addEventListener('click', () => {
             const token = document.getElementById('githubToken').value.trim();
             if (token) {
                 this.saveToken(token);
             } else {
-                alert('Please enter your GitHub token');
+                this.showToast('Please enter your GitHub token', 'error');
             }
         });
         
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            if (confirm('Are you sure you want to logout?')) {
-                this.logout();
-            }
+        document.getElementById('showToken')?.addEventListener('click', (e) => {
+            const input = document.getElementById('githubToken');
+            input.type = input.type === 'password' ? 'text' : 'password';
+            e.target.querySelector('i').classList.toggle('fa-eye');
+            e.target.querySelector('i').classList.toggle('fa-eye-slash');
+        });
+        
+        document.getElementById('logoutBtn')?.addEventListener('click', () => {
+            this.logout();
         });
     }
     
-    // GitHub API Helper Methods
-    async apiRequest(endpoint, method = 'GET', data = null) {
-        const url = `${this.baseURL}${endpoint}`;
-        const headers = {
-            'Authorization': `Bearer ${this.token}`,
+    getHeaders(token = null) {
+        return {
+            'Authorization': `Bearer ${token || this.token}`,
             'Accept': 'application/vnd.github.v3+json',
             'User-Agent': 'Personal-Drive-App'
         };
+    }
+    
+    async apiRequest(endpoint, method = 'GET', data = null, useCache = false) {
+        const cacheKey = `${method}_${endpoint}_${JSON.stringify(data)}`;
+        
+        if (useCache && this.cache.has(cacheKey)) {
+            return this.cache.get(cacheKey);
+        }
+        
+        const url = `${this.baseURL}${endpoint}`;
+        const headers = this.getHeaders();
         
         if (method !== 'GET' && data) {
             headers['Content-Type'] = 'application/json';
@@ -174,60 +194,30 @@ class GitHubDriveAuth {
         const response = await fetch(url, options);
         
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`GitHub API error (${response.status}): ${errorText}`);
+            const error = await response.json().catch(() => ({}));
+            throw new Error(`GitHub API error (${response.status}): ${error.message || 'Unknown error'}`);
         }
         
-        // For DELETE requests that return no content
         if (response.status === 204) {
             return { success: true };
         }
         
-        return await response.json();
+        const result = await response.json();
+        
+        if (useCache && method === 'GET') {
+            this.cache.set(cacheKey, result);
+        }
+        
+        return result;
     }
     
     // File Operations
-    async getFileContent(path) {
-        const endpoint = `/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
-        return this.apiRequest(endpoint);
-    }
-    
-    async createFile(path, content, message = 'Add file') {
-        const endpoint = `/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
-        const data = {
-            message,
-            content: btoa(content)
-        };
-        return this.apiRequest(endpoint, 'PUT', data);
-    }
-    
-    async updateFile(path, sha, content, message = 'Update file') {
-        const endpoint = `/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
-        const data = {
-            message,
-            content: btoa(content),
-            sha
-        };
-        return this.apiRequest(endpoint, 'PUT', data);
-    }
-    
-    async deleteFile(path, sha, message = 'Delete file') {
-        const endpoint = `/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
-        const data = {
-            message,
-            sha
-        };
-        return this.apiRequest(endpoint, 'DELETE', data);
-    }
-    
     async listFiles(path = '') {
         const endpoint = `/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
         try {
-            const response = await this.apiRequest(endpoint);
-            // Filter out .gitkeep files
-            return Array.isArray(response) ? response.filter(file => file.name !== '.gitkeep') : [];
+            const files = await this.apiRequest(endpoint, 'GET', null, true);
+            return Array.isArray(files) ? files : [];
         } catch (error) {
-            // If directory doesn't exist, return empty array
             if (error.message.includes('404')) {
                 return [];
             }
@@ -235,21 +225,15 @@ class GitHubDriveAuth {
         }
     }
     
-    async createDirectory(path) {
-        // Create README.md file in directory instead of .gitkeep
-        const filePath = path ? `${path}/README.md` : 'README.md';
-        const content = `# ${path.split('/').pop() || 'Home'}\n\nThis folder was created by Personal Drive.`;
-        return this.createFile(filePath, content, 'Create directory');
-    }
-    
-    async uploadFile(path, file) {
+    async uploadFile(file, path = '') {
+        const filePath = path ? `${path}/${file.name}` : file.name;
+        
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = async () => {
                 try {
-                    // Convert to base64
                     const base64Content = reader.result.split(',')[1];
-                    const result = await this.createFile(path, base64Content, `Upload ${file.name}`);
+                    const result = await this.createFile(filePath, base64Content, `Upload ${file.name}`);
                     resolve(result);
                 } catch (error) {
                     reject(error);
@@ -260,16 +244,37 @@ class GitHubDriveAuth {
         });
     }
     
-    async downloadFile(path) {
-        const fileData = await this.getFileContent(path);
+    async createFile(path, content, message = 'Add file') {
+        const endpoint = `/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
+        const data = {
+            message,
+            content: content
+        };
+        return this.apiRequest(endpoint, 'PUT', data);
+    }
+    
+    async deleteFile(path, sha, message = 'Delete file') {
+        const endpoint = `/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
+        const data = {
+            message,
+            sha
+        };
         
-        // For binary files, we need to fetch from download_url
-        if (fileData.download_url) {
-            const response = await fetch(fileData.download_url, {
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'User-Agent': 'Personal-Drive-App'
-                }
+        // Clear cache for this path
+        const cacheKey = `GET_/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(path)}`;
+        this.cache.delete(cacheKey);
+        
+        return this.apiRequest(endpoint, 'DELETE', data);
+    }
+    
+    async downloadFile(file) {
+        try {
+            // Get file info
+            const fileInfo = await this.apiRequest(`/repos/${this.repoOwner}/${this.repoName}/contents/${encodeURIComponent(file.path)}`);
+            
+            // Fetch the actual file content
+            const response = await fetch(fileInfo.download_url, {
+                headers: this.getHeaders()
             });
             
             if (!response.ok) {
@@ -277,38 +282,64 @@ class GitHubDriveAuth {
             }
             
             const blob = await response.blob();
-            return {
-                blob,
-                name: fileData.name,
-                size: fileData.size,
-                download_url: fileData.download_url
-            };
-        } else {
-            // For text files, decode from content
-            const content = atob(fileData.content);
-            const blob = new Blob([content], { type: 'text/plain' });
-            return {
-                blob,
-                name: fileData.name,
-                size: fileData.size,
-                download_url: null
-            };
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileInfo.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            return { success: true, name: fileInfo.name };
+        } catch (error) {
+            console.error('Download error:', error);
+            throw error;
         }
     }
     
+    async getStorageStats() {
+        try {
+            const repo = await this.apiRequest(`/repos/${this.repoOwner}/${this.repoName}`, 'GET', null, true);
+            return {
+                size: repo.size * 1024, // Convert KB to bytes
+                updated: repo.updated_at
+            };
+        } catch (error) {
+            console.error('Storage stats error:', error);
+            return { size: 0, updated: new Date() };
+        }
+    }
+    
+    // Utility methods
     showLoading(text = 'Loading...') {
-        const loadingEl = document.getElementById('loadingOverlay');
-        const textEl = document.getElementById('loadingText');
-        if (loadingEl && textEl) {
+        const loading = document.getElementById('loadingScreen');
+        const textEl = document.querySelector('.loading-content p');
+        if (loading && textEl) {
             textEl.textContent = text;
-            loadingEl.style.display = 'flex';
+            loading.style.display = 'flex';
         }
     }
     
     hideLoading() {
-        const loadingEl = document.getElementById('loadingOverlay');
-        if (loadingEl) {
-            loadingEl.style.display = 'none';
+        const loading = document.getElementById('loadingScreen');
+        if (loading) {
+            loading.style.display = 'none';
+        }
+    }
+    
+    showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+        
+        if (toast && toastMessage) {
+            toastMessage.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
         }
     }
 }
